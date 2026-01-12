@@ -20,7 +20,7 @@ CHAMADAS_DIR = DATA_DIR / "chamadas_csv"
 SRC_DIR = ROOT_DIR / "src"
 
 # O arquivo real que aparece na sua estrutura é .csv
-ARQUIVO_OCORRENCIAS = CHAMADAS_DIR / "ocorrencias_classificadas.csv"
+ARQUIVO_OCORRENCIAS = CHAMADAS_DIR / "nova_planilha_ocorrencias.xlsx"
 
 # =================================================================
 # 2. FUNÇÕES DE APOIO (LÓGICA E EXECUÇÃO)
@@ -80,33 +80,33 @@ def mostrar_dados_ocorrencias():
 
     try:
 
-        df = pd.read_csv(
-            ARQUIVO_OCORRENCIAS, 
-            dtype=str, 
-            encoding='latin-1',  
-            sep=None,            
-            engine='python'
-        )
+        df = pd.read_excel(ARQUIVO_OCORRENCIAS)
         
         if df.empty:
-            st.info("📭 O arquivo está vazio.")
+            st.info("📭 O arquivo Excel está vazio.")
             return
         
-        df['Data/hora de criação'] = pd.to_datetime(
-            df['Data/hora de criação'], 
-            dayfirst=True, 
-            errors='coerce'
-        )
+        coluna_data = 'Data/hora de criação'
         
-        df = df.dropna(subset=['Data/hora de criação'])
-        st.subheader("📋 Últimas Ocorrências")
+        if coluna_data in df.columns:
+
+            df[coluna_data] = pd.to_datetime(
+                df[coluna_data], 
+                dayfirst=True,        
+                errors='coerce'        
+            )
+            
+            df = df.dropna(subset=[coluna_data])
+            df = df.sort_values(coluna_data, ascending=False)
+
+        st.subheader("📋 Últimas Ocorrências (Excel)")
         st.dataframe(
-            df.sort_values('Data/hora de criação', ascending=False).head(25),
+            df.head(25),
             use_container_width=True
         )
 
     except Exception as e:
-        st.error(f"❌ Erro ao carregar os dados: {e}")
+        st.error(f"❌ Erro ao carregar o Excel: {e}")
 
 def main():
     st.set_page_config(page_title="Cad Automation", layout="wide")
