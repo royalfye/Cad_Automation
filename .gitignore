@@ -1,0 +1,11 @@
+# Ambientes virtuais (pastas pesadas)
+venv/
+.venv/
+__pycache__/
+
+# Arquivos temporários do Windows
+Thumbs.db
+Desktop.ini
+
+# Dados sensíveis ou locais (opcional, se não quiser subir seus CSVs)
+# data/chamadas_csv/*.csv

@@ -1,0 +1,8 @@
+pandas
+pyautogui
+pygetwindow
+openpyxl
+pynput
+streamlit
+opencv-python
+pywhatkit
