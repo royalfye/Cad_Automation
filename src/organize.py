@@ -19,12 +19,24 @@ def aplicar_estilos_celula(ws):
     )
 
     for col in ws.iter_cols(1, ws.max_column):
-        # Ajuste de largura
+        nome_coluna = col[0].value # Pega o nome do cabeçalho
+        
+        # Ajuste de largura padrão
         max_len = max((len(str(cell.value)) for cell in col if cell.value), default=10)
-        ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 50)
+        
+        # --- REGRA ESPECIAL PARA O HISTÓRICO ---
+        if nome_coluna == 'Histórico':
+            ws.column_dimensions[col[0].column_letter].width = 60 # Largura fixa maior
+        else:
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 50)
 
         for cell in col:
-            cell.alignment = Alignment(horizontal='left', vertical='center')
+            # Se for histórico, permite quebra de linha para o texto não 'vazar'
+            if nome_coluna == 'Histórico' and cell.row > 1:
+                cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+            else:
+                cell.alignment = Alignment(horizontal='left', vertical='center')
+            
             if cell.row > 1: # Bordas apenas nos dados
                 cell.border = border_style
             else: # Cabeçalho em negrito

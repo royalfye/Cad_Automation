@@ -1,17 +1,43 @@
+## 📝 Descrição Geral
 
----
+O **Cad_Automation** é um ecossistema de automação (RPA) e visualização de dados desenvolvido para otimizar o fluxo de informações de ocorrências policiais e de bombeiros. O projeto extrai dados brutos de um sistema legado (CAD), processa essas informações, enriquece-as com inteligência visual (OCR) e as disponibiliza em uma interface amigável para despacho via WhatsApp.
 
-# 🛡️ CAD Automation & Info Portal
+## 🛠️ Arquitetura do Sistema
 
-Sistema de automação para extração, tratamento e visualização de dados do sistema **CAD**. O projeto automatiza a exportação de ocorrências policiais/bombeiros e consolida as informações em um painel interativo.
+O projeto é dividido em três pilares principais:
 
-Sua estrutura em árvore está da seguinte forma:
+### 1. Motor de Automação e Extração (`src/main.py` & `src/get_description.py`)
 
-```
+* **Foco e Navegação:** Utiliza `PyGetWindow` e `PyAutoGUI` para manipular a interface do sistema CAD, realizar pesquisas filtradas por unidade (Ex: PASSOS) e exportar relatórios em `.csv`.
+* **Visão Computacional (OCR):** Através do `Pytesseract`, o sistema realiza a leitura de campos de texto não selecionáveis dentro do CAD. Ele captura uma região específica da tela (ROI), processa a imagem para melhorar a nitidez e converte o histórico da ocorrência em texto digital.
+
+### 2. Processamento e Organização (`src/organize.py` & `src/utils/`)
+
+* **Tratamento de Dados:** Utiliza `Pandas` para realizar o merge entre novos dados e o histórico existente, eliminando duplicatas e calculando informações automáticas (como a escala de trabalho/ALA).
+* **Estética de Dados:** Utiliza `Openpyxl` para formatar a planilha Excel final, aplicando cores condicionais por ALA e configurando quebras de texto automáticas para o campo de Histórico.
+
+### 3. Interface de Operação (`app.py`)
+
+* **Dashboard Streamlit:** Uma interface web local que permite ao operador disparar a automação com um clique e visualizar a planilha completa.
+* **Central de Disparos:** Permite selecionar ocorrências específicas e gera automaticamente dois tipos de formatos para WhatsApp:
+* **Chamada Completa:** Dados de localização, natureza e histórico.
+* **Atualização de Histórico:** Apenas as novas informações vinculadas ao ID da chamada.
+
+
+
+## 📂 Estrutura de Pastas
+
+```text
 Cad_Automation/
 ├── assets/
+│   ├── cabecalho.png
 │   ├── chamadas_button.png
+│   ├── dados_gerais.png
+│   ├── dados_gerais2.png
 │   ├── exportar_csv.png
+│   ├── historicos.png
+│   ├── historicos2.png
+│   ├── lapis.png
 │   ├── passos_exibido.png
 │   ├── pesquisa_button.png
 │   ├── seta_button.png
@@ -24,6 +50,7 @@ Cad_Automation/
 │   │   └── ocorrencias_classificadas.csv
 │   ├── processed/
 │   └── raw/
+│       └── ultima_extracao.png
 ├── src/
 │   ├── components/
 │   │   ├── __init__.py
@@ -33,9 +60,13 @@ Cad_Automation/
 │   │   ├── legislacao.py
 │   │   ├── recursos.py
 │   │   └── telefones.py
+│   ├── data/
+│   │   └── raw/
+│   │       └── debug_cad.png
 │   ├── utils/
 │   │   ├── __init__.py
 │   │   ├── def_region.py
+│   │   ├── get_description_print.py
 │   │   ├── get_window.py
 │   │   ├── organizer_tree.py
 │   │   ├── paths.py
@@ -43,6 +74,7 @@ Cad_Automation/
 │   ├── __init__.py
 │   ├── atualizar_dados_mes.py
 │   ├── cad_verify.py
+│   ├── get_description.py
 │   ├── main.py
 │   ├── main_ultimos_3_dias.py
 │   └── organize.py
@@ -54,34 +86,22 @@ Cad_Automation/
 
 ```
 
-## 🚀 Funcionalidades
+## 🚀 Como o Projeto Funciona (Fluxo de Dados)
 
-* **Extração Robótica:** Utiliza visão computacional e automação de interface (PyAutoGUI) para navegar no sistema CAD e exportar dados.
-* **Processamento de Dados:** Filtra ocorrências por unidade (Passos), classifica naturezas e identifica automaticamente a Ala de serviço (1ª a 4ª).
-* **Interface Intuitiva:** Exibe os dados consolidados em um dashboard moderno via Streamlit.
-* **Organização Excel:** Formata planilhas automaticamente com cores dinâmicas por Ala, bordas e ajuste de colunas.
+1. O operador acessa o **Streamlit** e clica em "Sincronizar".
+2. O Python assume o controle, foca no **CAD**, pesquisa as ocorrências de Passos e baixa o CSV.
+3. O robô "mergulha" na última ocorrência, tira um print do histórico e usa **OCR** para ler o texto.
+4. Os dados são compilados em uma planilha Excel formatada.
+5. O operador escolhe a ocorrência no App e clica no botão de cópia (ou link direto) para enviar ao grupo de WhatsApp.
 
-## 📁 Principais Arquivos e Funções
+## ⚙️ Tecnologias Utilizadas
 
-| Arquivo | Função Principal |
-| --- | --- |
-| **`app.py`** | **Ponto de entrada.** Gerencia a interface do usuário no navegador e orquestra as chamadas das automações. |
-| **`src/main.py`** | **Cérebro da Automação.** Contém a lógica de controle do mouse/teclado para extração no CAD e o merge dos dados novos com os antigos. |
-| **`src/organize.py`** | **Estética e Estrutura.** Aplica toda a formatação visual no Excel (cores das alas, bordas e ordenação por data). |
-| **`assets/`** | Armazena as imagens de referência para que o robô reconheça botões e ícones na tela. |
-| **`data/`** | Local onde o banco de dados (CSV/Excel) é armazenado e atualizado. |
-
-## 🛠️ Como rodar
-
-1. Certifique-se de que o sistema CAD está aberto.
-2. Inicie o portal:
-```bash
-streamlit run app.py
-
-```
-
-
-3. Clique em **"Sincronizar e Organizar"** e não utilize o mouse até que a janela do CAD seja fechada.
-
+* **Python 3.x**
+* **Streamlit** (Interface)
+* **Pandas** (Tratamento de Dados)
+* **PyAutoGUI & PyGetWindow** (RPA/Automação de UI)
+* **Tesseract OCR** (Reconhecimento de Texto em Imagem)
+* **Openpyxl** (Manipulação de Excel)
 
 ---
+

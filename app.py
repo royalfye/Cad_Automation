@@ -1,41 +1,63 @@
 import streamlit as st
 import pandas as pd
 from pathlib import Path
+from typing import Optional
+from streamlit_option_menu import option_menu
 from src.main import run_full_automation
 
 ROOT_DIR = Path(__file__).resolve().parent
 ARQUIVO_OCORRENCIAS = ROOT_DIR / "data" / "chamadas_csv" / "nova_planilha_ocorrencias.xlsx"
 
 @st.cache_data(ttl=300)
-@st.cache_data(ttl=300)
-def carregar_dados(caminho: Path):
+def carregar_dados(caminho: Path) -> Optional[pd.DataFrame]:
     if not caminho.exists():
         return None
+    
     try:
         df = pd.read_excel(caminho)
         
         df['Data/hora de criação'] = pd.to_datetime(
             df['Data/hora de criação'], 
             format="%d/%m/%Y %H:%M", 
-            dayfirst=True
+            dayfirst=True,
+            errors='coerce'
         )
         
-        # 2. Ordenação Garantida (Mais recentes no topo)
-        df = df.sort_values(by='Data/hora de criação', ascending=False)
-        
-        return df.reset_index(drop=True)
+        return df.sort_values(by='Data/hora de criação', ascending=False).reset_index(drop=True)
         
     except Exception as e:
-        st.error(f"Erro ao processar os dados: {e}")
+        st.error(f"Erro crítico ao ler Excel: {e}")
         return None
 
-def formatar_uma_ocorrencia(row):
+def formatar_uma_ocorrencia(row: pd.Series) -> str:
+    data_formatada = row['Data/hora de criação'].strftime('%d/%m/%Y %H:%M')
+    
+    # Verificamos se a coluna 'Histórico' existe e se tem conteúdo
+    # O .get() evita que o código quebre caso a coluna ainda não exista no Excel
+    historico = row.get('Histórico', "(Aguardando preenchimento)")
+    
+    # Se o valor for nulo (vazio no Excel), colocamos o aviso
+    if pd.isna(historico) or str(historico).strip() == "":
+        historico = "(Aguardando preenchimento)"
+
     return (
         f"🚨 *NOVA OCORRÊNCIA*\n\n"
-        f"📅 *Data/Hora:* {row['Data/hora de criação']}\n"
+        f"📅 *Data/Hora:* {data_formatada}\n"
         f"📝 *Natureza:* {row['Natureza']}\n"
         f"📍 *Endereço:* {row['Local do fato']}\n"
-        f"📖 *Histórico:* (Aguardando preenchimento)"
+        f"📖 *Histórico:* {historico}"
+    )
+
+def formatar_apenas_historico(row: pd.Series) -> str:
+    """Formata apenas o histórico com o ID da chamada para referência."""
+    historico = row.get('Histórico', "")
+    if pd.isna(historico) or str(historico).strip() == "":
+        return "⚠️ *Aviso:* Histórico ainda não preenchido para esta chamada."
+    
+    return (
+        f"📖 *ATUALIZAÇÃO DE HISTÓRICO*\n"
+        f"Nº Chamada: `{row['Nº chamada']}`\n\n"
+        f"{historico}"
     )
 
 def main():
@@ -72,38 +94,37 @@ def main():
         else:
             st.info("Nenhum dado encontrado.")
 
-    # --- ABA: DISPAROS (Aqui é onde a mágica acontece) ---
-    # --- ABA: DISPAROS ---
     elif menu == "Disparos":
         st.header("📲 Central de Disparos")
         
         if df is not None and not df.empty:
-            # 1. Seleção da Ocorrência
-            # Criamos uma lista formatada: "16/01/2026 18:51 - NATUREZA"
-            opcoes = df.apply(
-                lambda x: f"{x['Data/hora de criação'].strftime('%d/%m/%Y %H:%M')} - {x['Natureza']}", 
-                axis=1
-            ).tolist()
+            # --- MELHORIA AQUI: Formatação inteligente ---
+            # Criamos uma função interna para formatar o nome que aparece no selectbox
+            def formatar_label(idx):
+                row = df.loc[idx]
+                data = row['Data/hora de criação'].strftime('%d/%m/%Y %H:%M')
+                return f"{data} - {row['Natureza']} (ID: {row['Nº chamada']})"
+
+            # O selectbox armazena o ÍNDICE original do DataFrame, 
+            # mas mostra ao usuário o texto bonito da função acima
+            indice_escolhido = st.selectbox(
+                "Selecione a ocorrência para despacho:",
+                options=df.index,
+                format_func=formatar_label
+            )
             
-            escolha = st.selectbox("Selecione a ocorrência para despacho:", opcoes)
-            
-            # 2. Filtro da linha selecionada
-            # Como o selectbox agora não tem o Nº da chamada fixo no início, 
-            # a melhor forma de recuperar a linha é pelo índice da seleção.
-            
-            # Buscamos o índice da opção escolhida para pegar a linha correspondente no DF
-            indice_selecionado = opcoes.index(escolha)
-            row = df.iloc[indice_selecionado]
-            
-            id_chamada = row['Nº chamada'] # Recuperamos o ID original para o histórico
+            # Recuperamos a linha selecionada diretamente pelo índice original
+            row = df.loc[indice_escolhido]
+            id_chamada = row['Nº chamada']
             
             st.divider()
 
-            # 3. Layout de Trabalho
+            # --- Layout de Trabalho ---
             col_info, col_copy = st.columns([1, 1])
             
             with col_info:
                 st.subheader("📍 Detalhes")
+                # Uso de f-string limpa e organizada
                 st.markdown(f"""
                 **Nº Chamada:** `{id_chamada}`  
                 **Natureza:** {row['Natureza']}  
@@ -112,16 +133,35 @@ def main():
                 """)
             
             with col_copy:
-                st.subheader("✍️ Formatação")
-                texto_pronto = formatar_uma_ocorrencia(row)
-                texto_editavel = st.text_area("Edite o histórico se necessário:", value=texto_pronto, height=200)
+                st.subheader("✍️ Formatação para Envio")
+                tab_completa, tab_historico = st.tabs(["📋 Chamada Completa", "📖 Só Histórico"])
                 
-                # Botão de cópia rápido
-                st.code(texto_editavel, language="text")
-                
-                if st.button("🚀 Confirmar Envio", use_container_width=True):
-                    st.balloons()
-                    st.success(f"Ocorrência {id_chamada} processada!")
+                with tab_completa:
+                    texto_pronto = formatar_uma_ocorrencia(row)
+                    # O st.code cria o botão de 'copiar' automaticamente
+                    st.code(texto_pronto, language="text") 
+                    
+                    with st.expander("📝 Editar texto antes de enviar"):
+                        st.text_area("Edição:", value=texto_pronto, height=150, key=f"edit_full_{id_chamada}")
+
+                with tab_historico:
+                    so_historico = formatar_apenas_historico(row)
+                    # Aqui está o seu 'botão' de copiar para o histórico
+                    st.code(so_historico, language="text")
+                    
+                    with st.expander("📝 Editar histórico antes de enviar"):
+                        st.text_area("Edição:", value=so_historico, height=150, key=f"edit_hist_{id_chamada}")
+
+                with tab_historico:
+                    so_historico = formatar_apenas_historico(row)
+                    st.text_area(
+                        "Apenas o Histórico:", 
+                        value=so_historico, 
+                        height=200,
+                        key=f"hist_{id_chamada}" 
+                    )
+                    if st.button("📢 Enviar Atualização", key=f"btn_hist_{id_chamada}"):
+                        st.success("Atualização enviada!")
         else:
             st.warning("Sem dados disponíveis para disparos. Vá em Automação e sincronize.")
 
