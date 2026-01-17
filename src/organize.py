@@ -3,87 +3,92 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+# Configuração de estilos constante (facilita manutenção)
+COLORS_ALA = {
+    '4ª': {'bg': 'FF0000', 'font': 'FFFFFF'},  # Vermelho / Branco
+    '3ª': {'bg': '00FF00', 'font': 'FFFFFF'},  # Verde / Branco
+    '2ª': {'bg': 'FFFF00', 'font': '000000'},  # Amarelo / Preto
+    '1ª': {'bg': '0000FF', 'font': 'FFFFFF'},  # Azul / Branco
+}
 
-ASSETS_DIR = ROOT_DIR / "assets"
-DATA_DIR = ROOT_DIR / "data" / "chamadas_csv"
-
-
-def formatar_excel(excel_file_path):
-    wb = load_workbook(excel_file_path)
-    ws = wb.active
+def aplicar_estilos_celula(ws):
+    """Aplica alinhamento, bordas e ajuste automático de colunas."""
+    border_style = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
 
     for col in ws.iter_cols(1, ws.max_column):
-        column_length = max(len(str(cell.value)) for cell in col)
-        column_length = max(column_length, len(col[0].value)) 
-        adjusted_width = min(column_length + 2, 50) 
-        ws.column_dimensions[col[0].column_letter].width = adjusted_width
+        # Ajuste de largura
+        max_len = max((len(str(cell.value)) for cell in col if cell.value), default=10)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 50)
 
         for cell in col:
             cell.alignment = Alignment(horizontal='left', vertical='center')
-    
+            if cell.row > 1: # Bordas apenas nos dados
+                cell.border = border_style
+            else: # Cabeçalho em negrito
+                cell.font = Font(bold=True)
+
+def aplicar_cores_ala(ws):
+    """Aplica a formatação condicional baseada na coluna ALA."""
+    col_idx = None
     for cell in ws[1]:
-        cell.font = Font(bold=True)
-
-    aplicar_formatacao_condicional(ws)
-    aplicar_bordas(ws)
-
-    wb.save(excel_file_path)
-
-def aplicar_formatacao_condicional(ws):
-    coluna_ala_idx = None
-    for col in ws.iter_cols(1, ws.max_column):
-        if col[0].value == 'ALA':
-            coluna_ala_idx = col[0].column_letter
+        if cell.value == 'ALA':
+            col_idx = cell.column_letter
             break
-
-    if coluna_ala_idx:
-        cores = {
-            '4ª': 'FF0000',  # vermelha
-            '3ª': '00FF00',  # verde
-            '2ª': 'FFFF00',  # amarela
-            '1ª': '0000FF',  # azul
-        }
-
-        for cell in ws[coluna_ala_idx][1:]: 
-            fill_color = cores.get(cell.value, None)
-            if fill_color:
-                cell.fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
-                font_color = '000000' if cell.value == '2ª' else 'FFFFFF' 
-                cell.font = Font(color=font_color)
-
-def aplicar_bordas(ws):
-    borda_preta = Border(
-        left=Side(style='thin', color='000000'),
-        right=Side(style='thin', color='000000'),
-        top=Side(style='thin', color='000000'),
-        bottom=Side(style='thin', color='000000')
-    )
-
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
-        for cell in row:
-            cell.border = borda_preta 
-
-def organizar_por_data(excel_file_path, coluna_data='Data/hora de criação'):
-    try:
-        df = pd.read_excel(excel_file_path)
-
-        if coluna_data not in df.columns:
-            print(f"Coluna '{coluna_data}' não encontrada no arquivo!")
-            return
-
-        df[coluna_data] = pd.to_datetime(df[coluna_data], dayfirst=True, errors='coerce')
-        df = df.sort_values(by=coluna_data)
-        df[coluna_data] = df[coluna_data].dt.strftime('%d/%m/%Y %H:%M')
-        
-        df.to_excel(excel_file_path, index=False)
-        formatar_excel(excel_file_path)
-
-        print(f"Arquivo '{excel_file_path.name}' organizado com sucesso!")
-    except Exception as e:
-        print(f"Erro ao organizar a planilha: {e}")
-
-if __name__ == "__main__":
-    target_file = DATA_DIR / "nova_planilha_ocorrencias.xlsx"
     
-    organizar_por_data(target_file)
+    if not col_idx:
+        return
+
+    for cell in ws[col_idx][1:]: # Pula o cabeçalho
+        style = COLORS_ALA.get(str(cell.value))
+        if style:
+            cell.fill = PatternFill(start_color=style['bg'], end_color=style['bg'], fill_type="solid")
+            cell.font = Font(color=style['font'], bold=(style['font'] == '000000'))
+
+def organizar_planilha(file_path: Path):
+    if not file_path.exists():
+        print(f"⚠️ Arquivo não encontrado: {file_path}")
+        return False
+
+    try:
+
+        file_path.rename(file_path)
+    except OSError:
+        print(f"❌ Erro: O arquivo {file_path.name} está aberto no Excel. Feche-o e tente novamente.")
+        return False
+
+    try:
+        # Etapa 1: Pandas (Lógica de dados)
+        df = pd.read_excel(file_path)
+        col_data = 'Data/hora de criação'
+        
+        if col_data in df.columns:
+            df[col_data] = pd.to_datetime(df[col_data], dayfirst=True, errors='coerce')
+            df = df.sort_values(by=col_data, ascending=False) # Mais recentes no topo
+            df[col_data] = df[col_data].dt.strftime('%d/%m/%Y %H:%M')
+            
+            df.to_excel(file_path, index=False)
+
+        # Etapa 2: Openpyxl (Estética)
+        wb = load_workbook(file_path)
+        ws = wb.active
+        
+        aplicar_estilos_celula(ws)
+        aplicar_cores_ala(ws)
+        
+        wb.save(file_path)
+        print(f"✅ Planilha {file_path.name} organizada e formatada!")
+        return True
+
+    except Exception as e:
+        print(f"❌ Erro ao organizar {file_path.name}: {e}")
+        return False
+
+# Mantém a compatibilidade para rodar o script sozinho
+if __name__ == "__main__":
+    # Localiza o ROOT_DIR de forma dinâmica para o script solto
+    BASE_DIR = Path(__file__).resolve().parent.parent
+    target = BASE_DIR / "data" / "chamadas_csv" / "nova_planilha_ocorrencias.xlsx"
+    organizar_planilha(target)
