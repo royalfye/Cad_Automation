@@ -8,6 +8,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment
 from src.organize import organizar_planilha
+from src.get_description import executar_automacao as extrair_historico_cad
 
 # Configurações de logs e segurança
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s: %(message)s')
@@ -28,7 +29,7 @@ def determinar_ala(data_hora_str):
     except:
         return "Indefinida"
 
-def atualizar_dados_occurrences(csv_file_path, excel_file_path):
+def atualizar_dados_occurrences(csv_file_path, excel_file_path, texto_historico=None):
     """Sua lógica original de Merge e Filtro"""
     if not csv_file_path.exists():
         logging.error("CSV não encontrado.")
@@ -52,10 +53,22 @@ def atualizar_dados_occurrences(csv_file_path, excel_file_path):
         df_novo_filtrado['ALA'] = df_novo_filtrado['Data/hora de criação'].apply(determinar_ala)
         
         df_novo_filtrado.rename(columns={'Data/hora da situação atual': 'Data/hora final'}, inplace=True)
-        
         if excel_file_path.exists():
             df_existente = pd.read_excel(excel_file_path, dtype=str)
+            
+            # Unimos o novo com o antigo
             df_final = pd.concat([df_existente, df_novo_filtrado]).drop_duplicates(subset=['Nº chamada'], keep='last')
+            
+            # --- O PULO DO GATO ---
+            # Se recebemos um histórico, vamos colocá-lo na última linha
+            if texto_historico:
+                # Se a coluna não existir, o Pandas cria automaticamente
+                if 'Histórico' not in df_final.columns:
+                    df_final['Histórico'] = ""
+                
+                # Colocamos o texto na última linha (index -1) da coluna 'Histórico'
+                df_final.iloc[-1, df_final.columns.get_loc('Histórico')] = texto_historico
+            
             df_final.to_excel(excel_file_path, index=False)
         else:
             df_novo_filtrado.to_excel(excel_file_path, index=False)
@@ -145,9 +158,14 @@ def run_full_automation():
             pyautogui.hotkey('alt', 'f4')
         except IndexError:
             logging.warning("Janela 'ocorrencias.csv - Excel' não encontrada.")
+
+        # --- NOVA ETAPA: EXTRAÇÃO DO HISTÓRICO ---
+        logging.info("Iniciando extração do histórico detalhado...")
+        texto_extraido = extrair_historico_cad() 
+        # A variável 'texto_extraido' agora guarda o que o OCR leu
         
         # 4. Tratamento dos Dados (Sua lógica de volta!)
-        atualizar_dados_occurrences(CSV_PATH, EXCEL_PATH)
+        atualizar_dados_occurrences(CSV_PATH, EXCEL_PATH, texto_extraido)
         
         # 5. Formatação Visual (Chama o organize.py)
         from src.organize import organizar_planilha
